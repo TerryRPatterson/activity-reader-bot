@@ -22,19 +22,16 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-import discord
-import asyncio
+
 import calendar
-from getpass import getpass
-from sys import exit
-from os import environ
 import datetime
-
-
-client = discord.Client()
+from collections import OrderedDict
+from os import environ
+from sys import exit
 
 
 def is_welcome_message(message):
+    """Determine if a message is the system welcome message."""
     if hasattr(message.author, "joined_at"):
         delta = message.timestamp - message.author.joined_at
         if delta.total_seconds() < 5:
@@ -42,35 +39,55 @@ def is_welcome_message(message):
     return False
 
 
-def menu(question, options):
-    numbered_options = list(options)
-    for index, option in enumerate(numbered_options):
-        question += f"\n{index} {option}"
-    question += "\n"
-    userResponse = int(input(question))
-    return numbered_options[userResponse]
+def get_message_info(message):
+    """Get the information for a message."""
+    id = message.author.id
+    if not message.author.bot and message.author in message.server.members:
+        try:
+            name = message.author.nick or message.author.name
+        except AttributeError:
+            name = message.author.name
+        discriminator = message.author.discriminator
+        if not is_welcome_message(message):
+            day_name = calendar.day_name[message.timestamp.weekday()]
+            human_date = human_readable_date(message.timestamp)
+            return {
+                                    "last_post": message.timestamp,
+                                    "name": name,
+                                    "discriminator": discriminator,
+                                    "last_post_human": human_date,
+                                    "id": message.author.id
+                }
+    return False
 
 
-def get_user_last_post(messages):
+def find_last_posts(messages):
+    """Find the last post for every user."""
     last_posts = {}
-    with open(f"{environ['HOME']}/log.txt", mode="w") as log:
-        for message in messages:
-            id = message.author.id
-            if not is_welcome_message(message):
-                log.write(f"{message.author.name} {message.channel.name}\n")
-                if id in last_posts:
-                    last_posts[id]["count"] += 1
-                    if last_posts[id]["last_post"] < message.timestamp:
-                        last_posts[id]["last_post"] = message.timestamp
-                else:
-                    last_posts[id] = {
-                                        "last_post": message.timestamp,
-                                        "count": 1
-                    }
+    for message in messages:
+        info = get_message_info(message)
+        if info:
+            id = info["id"]
+            timestamp = info["last_post"]
+            human_date = info["last_post_human"]
+            if id in last_posts:
+                last_posts[id]["count"] += 1
+                if last_posts[id]["last_post"] < timestamp:
+                    last_posts[id]["last_post"] = timestamp
+                    last_posts[id]["last_post_human"] = human_date
+            else:
+                last_posts[id] = {
+                                    "last_post": timestamp,
+                                    "count": 1,
+                                    "name": info["name"],
+                                    "discriminator": info["discriminator"],
+                                    "last_post_human": human_date
+                }
     return last_posts
 
 
 def human_readable_date(timestamp):
+    """Make the timestamp human readable."""
     month = calendar.month_name[timestamp.month]
     day = timestamp.day
     current_year = datetime.datetime.now().year
@@ -81,64 +98,35 @@ def human_readable_date(timestamp):
         return f"{month} {day} {year}"
 
 
-def write_file(last_posts, members):
-    user_home = environ["HOME"]
-    with open(f"{user_home}/posting_date.txt", mode="w") as file:
-        lines = []
-        for member in members:
-            member_name = member.nick or member.name
-            discriminator = member.discriminator
-            if member.id in last_posts:
-                last_post_date = last_posts[member.id]["last_post"]
-                last_post_human = human_readable_date(last_post_date)
-                total_posts = last_posts[member.id]["count"]
-                lines.append(f"Name:{member_name}#{discriminator}"
-                             f" Last Post: {last_post_human}"
-                             f" Total Posts: {total_posts}\n")
-            else:
-                lines.append(f"{member_name}#{discriminator} has never "
-                             "posted.\n")
-        sorted_lines = sorted(lines)
-        file.writelines(sorted_lines)
-
-
-async def get_all_messages(channel, start=None):
+async def get_all_messages_channel(client, channel, start=None):
+    """Get all the messages in the channel."""
     if start is None:
         start = channel.created_at
     messages = []
     async for message in client.logs_from(channel, after=start, reverse=True):
         messages.append(message)
     if len(messages) > 0:
-        more_messages = await get_all_messages(channel, start=messages[-1])
+        more_messages = await get_all_messages_channel(client, channel,
+                                                       start=messages[-1])
         if len(more_messages) > 0:
             messages.extend(more_messages)
     return messages
 
 
-@client.event
-async def on_ready():
-    print('Logged in as')
-    print(client.user.name)
-    print(client.user.id)
-    print('------')
-    server_query = "Which server would you like to check?"
-    server = menu(server_query, client.servers)
-    print(f"Processing messages for {server.name}")
-    await client.request_offline_members(server)
+async def get_all_messages_server(client, server):
+    """Retrive the full history of the server that is visible to the user."""
     messages = []
     for channel in server.channels:
         if channel.permissions_for(server.me).read_messages:
-            channel_messages = await get_all_messages(channel)
+            channel_messages = await get_all_messages_channel(client, channel)
             messages.extend(channel_messages)
-    client.close()
-    last_posts = get_user_last_post(messages)
-    write_file(last_posts, server.members)
-    print(f"Output placed at: {environ['HOME']}/posting_date.txt")
-    input("Hit enter to quit.")
-    exit()
+    return messages
 
 
-email = input("Email? ")
-password = getpass()
-
-client.run(email, password)
+async def activity_logs(client, server):
+    """Get a log of all users activity."""
+    messages = await get_all_messages_server(client, server)
+    last_posts = find_last_posts(messages)
+    sorted_last_posts = OrderedDict(sorted(last_posts.items(), key=lambda post:
+                                    post[1]["last_post"]))
+    return sorted_last_posts

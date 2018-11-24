@@ -1,0 +1,6 @@
+[submodule "discord-bot-framework"]
+	path = discord-bot-framework
+	url = git@github.com:TerryRPatterson/discord-bot-framework.git
+[submodule "discord_bot_framework"]
+	path = discord_bot_framework
+	url = git@github.com:TerryRPatterson/discord_bot_framework.git
