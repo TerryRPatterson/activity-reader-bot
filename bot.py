@@ -37,7 +37,7 @@ async def on_ready():
 @bot.event
 async def on_message(message):
     """Update logs for incoming logs."""
-    if finished_processing:
+    if finished_processing and not message.author == bot.user:
         await bot.process_message(message)
         server_id = message.server.id
         server_log = server_activity_logs[server_id]
@@ -49,8 +49,23 @@ async def on_message(message):
                 message_info["count"] = author_log["count"] + 1
             else:
                 message_info["count"] = 1
-            print(message_info)
             server_log[author_id] = message_info
+
+
+@bot.command
+async def pruge_reactions(message: discord.Message):
+    """Remove all reactions from dead users."""
+    reaction_authors = []
+    messages = await activityReader.get_all_messages_channel(bot,
+                                                             message.channel)
+    for message in messages:
+        for reaction in message.reactions:
+            reactors = await bot.get_reaction_users(reaction)
+            for reactor in reactors:
+                if reactor not in message.server.members:
+                    await bot.remove_reaction(message, reaction.emoji, reactor)
+    await bot.send_message(message.author, "Reaction purge complete.")
+    await bot.delete_message(message)
 
 
 @bot.command
