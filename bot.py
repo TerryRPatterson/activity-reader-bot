@@ -1,10 +1,9 @@
 #! /usr/bin/env python3
 
-import discord
 import activityReader
+import discord
 from api_secrets import bot_token
 from discord_bot_framework.discord_bot import Bot
-
 
 bot = Bot(title="ActivityChecker", prefix="&")
 finished_processing = False
@@ -20,7 +19,7 @@ async def load_server_activity(server):
 
 @bot.event
 async def on_ready():
-    """"Startup sequence."""
+    """Startup sequence."""
     print('Logged in as')
     print(bot.user.name)
     print(bot.user.id)

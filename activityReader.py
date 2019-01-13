@@ -103,6 +103,7 @@ async def get_all_messages_channel(client, channel, start=None):
         start = channel.created_at
     messages = []
     async for message in client.logs_from(channel, after=start, reverse=True):
+        print(message)
         messages.append(message)
     if len(messages) > 0:
         more_messages = await get_all_messages_channel(client, channel,
