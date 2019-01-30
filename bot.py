@@ -73,14 +73,25 @@ async def activity_check(message: discord.Message):
     """Check all users activity."""
     target_channel = message.channel
     target_server = message.server
-    lines = []
+    posts = []
+    non_posts = []
     server_logs = server_activity_logs[target_server.id]
     for user in server_logs.values():
-        lines.append(f"Name:{user['name']}#{user['discriminator']}"
-                     f" Last Post: {user['last_post_human']}"
-                     f" Join date: {user['join_date']}"
-                     f" Total Posts: {user['count']}\n")
+        if "join_date" not in user:
+            user["join_date"] = "No join date detected."
+        posts.append(f"Name: **{user['mention']}**"
+                     f" Last Post: **{user['last_post_human']}**"
+                     f" Join date: **{user['join_date']}**"
+                     f" Total Posts: **{user['count']}**\n")
+
+    for member in target_server.members:
+        if not member.bot and member.id not in server_logs:
+            join_date = activityReader.human_readable_date(member.joined_at)
+            non_posts.append(f"**{member.mention}** has not posted."
+                             I f"They join at **{join_date}**\n")
+
     message_text = ""
+    lines = non_posts + posts
     total_lines = len(lines)
     for index, line in enumerate(lines):
         new_message_text = message_text + line
