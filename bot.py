@@ -78,6 +78,7 @@ async def activity_check(message: discord.Message):
     for user in server_logs.values():
         lines.append(f"Name:{user['name']}#{user['discriminator']}"
                      f" Last Post: {user['last_post_human']}"
+                     f" Join date: {user['join_date']}"
                      f" Total Posts: {user['count']}\n")
     message_text = ""
     total_lines = len(lines)
