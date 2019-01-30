@@ -48,9 +48,8 @@ def get_message_info(message):
         except AttributeError:
             name = message.author.name
         discriminator = message.author.discriminator
+        human_date = human_readable_date(message.timestamp)
         if not is_welcome_message(message):
-            day_name = calendar.day_name[message.timestamp.weekday()]
-            human_date = human_readable_date(message.timestamp)
             return {
                                     "last_post": message.timestamp,
                                     "name": name,
@@ -58,6 +57,13 @@ def get_message_info(message):
                                     "last_post_human": human_date,
                                     "id": message.author.id
                 }
+        else:
+            return {
+                        "join_messge": True,
+                        "join_date": human_date,
+                        "id": message.author.id
+            }
+
     return False
 
 
@@ -67,22 +73,35 @@ def find_last_posts(messages):
     for message in messages:
         info = get_message_info(message)
         if info:
-            id = info["id"]
-            timestamp = info["last_post"]
-            human_date = info["last_post_human"]
-            if id in last_posts:
-                last_posts[id]["count"] += 1
-                if last_posts[id]["last_post"] < timestamp:
-                    last_posts[id]["last_post"] = timestamp
-                    last_posts[id]["last_post_human"] = human_date
+            if not info["join_message"]:
+                id = info["id"]
+                timestamp = info["last_post"]
+                human_date = info["last_post_human"]
+                if id in last_posts:
+                    last_posts[id]["count"] += 1
+                    if last_posts[id]["last_post"] < timestamp:
+                        last_posts[id]["last_post"] = timestamp
+                        last_posts[id]["last_post_human"] = human_date
+                else:
+                    last_posts[id] = {
+                                        "last_post": timestamp,
+                                        "count": 1,
+                                        "name": info["name"],
+                                        "discriminator": info["discriminator"],
+                                        "last_post_human": human_date
+                    }
             else:
-                last_posts[id] = {
-                                    "last_post": timestamp,
-                                    "count": 1,
-                                    "name": info["name"],
-                                    "discriminator": info["discriminator"],
-                                    "last_post_human": human_date
-                }
+                if id in last_posts:
+                    last_posts[id]["join_date"] = info["join_date"];
+                else if:
+                    last_posts[id] = {
+                                        "last_post": float("-inf"),
+                                        "count": 0,
+                                        "name": info["name"],
+                                        "discriminator": info["discriminator"],
+                                        "last_post_human": float("-inf")
+                                        "join_date": info["join_date"]
+                    }
     return last_posts
 
 
@@ -97,13 +116,13 @@ def human_readable_date(timestamp):
     else:
         return f"{month} {day} {year}"
 
+
 async def get_all_messages_channel(client, channel, start=None):
     """Get all the messages in the channel."""
     if start is None:
         start = channel.created_at
     messages = []
     async for message in client.logs_from(channel, after=start, reverse=True):
-        print(message)
         messages.append(message)
     if len(messages) > 0:
         more_messages = await get_all_messages_channel(client, channel,
