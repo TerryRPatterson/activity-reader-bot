@@ -97,7 +97,6 @@ def human_readable_date(timestamp):
     else:
         return f"{month} {day} {year}"
 
-
 async def get_all_messages_channel(client, channel, start=None):
     """Get all the messages in the channel."""
     if start is None:
