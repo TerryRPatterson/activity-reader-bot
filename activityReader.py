@@ -43,26 +43,17 @@ def get_message_info(message):
     """Get the information for a message."""
     id = message.author.id
     if not message.author.bot and message.author in message.server.members:
-        try:
-            name = message.author.nick or message.author.name
-        except AttributeError:
-            name = message.author.name
         discriminator = message.author.discriminator
         human_date = human_readable_date(message.timestamp)
         if not is_welcome_message(message):
+            human_readable_join = human_readable_date(message.author.joined_at)
             return {
                                     "last_post": message.timestamp,
-                                    "name": name,
-                                    "discriminator": discriminator,
+                                    "mention": message.author.mention,
                                     "last_post_human": human_date,
-                                    "id": message.author.id
+                                    "id": message.author.id,
+                                    "join_date": human_readable_join,
                 }
-        else:
-            return {
-                        "join_messge": True,
-                        "join_date": human_date,
-                        "id": message.author.id
-            }
 
     return False
 
@@ -73,8 +64,9 @@ def find_last_posts(messages):
     for message in messages:
         info = get_message_info(message)
         if info:
-            if not info["join_message"]:
-                id = info["id"]
+            id = info["id"]
+            zero_date = datetime.datetime(1, 1, 1)
+            if "join_message" not in info:
                 timestamp = info["last_post"]
                 human_date = info["last_post_human"]
                 if id in last_posts:
@@ -86,21 +78,9 @@ def find_last_posts(messages):
                     last_posts[id] = {
                                         "last_post": timestamp,
                                         "count": 1,
-                                        "name": info["name"],
-                                        "discriminator": info["discriminator"],
-                                        "last_post_human": human_date
-                    }
-            else:
-                if id in last_posts:
-                    last_posts[id]["join_date"] = info["join_date"];
-                else if:
-                    last_posts[id] = {
-                                        "last_post": float("-inf"),
-                                        "count": 0,
-                                        "name": info["name"],
-                                        "discriminator": info["discriminator"],
-                                        "last_post_human": float("-inf")
-                                        "join_date": info["join_date"]
+                                        "mention": info["mention"],
+                                        "last_post_human": human_date,
+                                        "join_date": info["join_date"],
                     }
     return last_posts
 
