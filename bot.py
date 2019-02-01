@@ -54,7 +54,6 @@ async def on_message(message):
 @bot.command
 async def pruge_reactions(message: discord.Message):
     """Remove all reactions from dead users."""
-    reaction_authors = []
     messages = await activityReader.get_all_messages_channel(bot,
                                                              message.channel)
     for message in messages:
@@ -68,7 +67,6 @@ async def pruge_reactions(message: discord.Message):
 
 
 @bot.command
-@bot.admin
 async def activity_check(message: discord.Message):
     """Check all users activity."""
     target_channel = message.channel
@@ -76,6 +74,7 @@ async def activity_check(message: discord.Message):
     lines = []
     server_logs = server_activity_logs[target_server.id]
     for user in server_logs.values():
+        print(user)
         lines.append(f"Name:{user['name']}#{user['discriminator']}"
                      f" Last Post: {user['last_post_human']}"
                      f" Join date: {user['join_date']}"

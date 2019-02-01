@@ -1,0 +1,27 @@
+#! /usr/bin/env bash
+set -e
+target="dev";
+if [[ "${1}" == "--prod" ]];
+then
+    target="latest";
+fi
+CURRENT_DIR=$(pwd);
+DIR="$(dirname "$(readlink -m "${0}"/../)")";
+cd ${DIR};
+
+cat "${DIR}/Dockerfile" |
+    sed -e "s/__UID__/$(id -u)/g" \
+        -e "s/__GID__/$(id -g)/g" |
+    docker build -t activity_reader:${target} -
+
+    docker run --env="USER=$USER" \
+            --rm=true \
+            --interactive=true --sig-proxy=true \
+            --volume="${DIR}:/code" \
+            --volume=/etc/localtime:/etc/localtime:ro \
+            activity_reader:${target} \
+            bash << EOT
+    python3.6 -m venv --clear --symlinks /code/.virtualenv
+    source /code/.virtualenv/bin/activate
+    python3.6 -m pip install -r /code/requirements.txt
+EOT

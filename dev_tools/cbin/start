@@ -1,0 +1,4 @@
+#! /usr/bin/env bash
+
+source /code/.virtualenv/bin/activate
+python bot.py;

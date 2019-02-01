@@ -1,0 +1,20 @@
+#! /usr/bin/env bash
+
+# Exit the script if any command returns non-zero
+set -e
+target="dev";
+if [[ "$1" == "--prod" ]];
+then
+    target="latest";
+fi
+
+DIR="$(dirname "$(readlink -m "$0"/../)")";
+
+
+docker run \
+            --rm=true\
+            --tty=true --interactive=true --sig-proxy=true \
+            --hostname=activity_reader_${target} \
+            --volume="${DIR}:/code" \
+            activity_reader:${target} \
+            start
