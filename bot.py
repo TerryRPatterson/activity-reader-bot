@@ -1,16 +1,39 @@
 #! /usr/bin/env python3
+"""
+Copyright 2018 Terry Patterson
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+"""
 
 import activityReader
 import discord
-from api_secrets import bot_token
+from os import environ, EX_CONFIG
 from activityReader import get_all_messages_server
-from discord_bot_framework.discord_bot import Bot
-prefix="&"
+from discord_bot import Bot
+try:
+    BOT_TOKEN = environ["discord_api_token"]
+except KeyError:
+    print("Bot token not found. Please set discord_api_token in enviorment to"
+          " your token.")
+    exit(EX_CONFIG)
+
+prefix = "&"
 bot = Bot(title="ActivityChecker", prefix=prefix)
 finished_processing = False
 server_activity_logs = {}
 
 permission_denied = "{mention} is that command for moderators only."
+
 
 async def load_server_activity(server):
     """Load the user activity for a server."""
@@ -59,6 +82,8 @@ async def on_message(message):
             await bot.send_message(message.channel, message_text)
 
 
+@bot.permissions_required(permissions=["manage_messages"],
+                          check_failed=permission_denied)
 @bot.command
 async def pruge_reactions(message: discord.Message):
     """Remove all reactions from dead users."""
@@ -128,4 +153,4 @@ async def delete_messages(message: discord.Message, user_id):
 
 
 
-bot.run(bot_token)
+bot.run(BOT_TOKEN)

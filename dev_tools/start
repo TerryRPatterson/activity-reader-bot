@@ -1,20 +1,22 @@
 #! /usr/bin/env bash
 
-# Exit the script if any command returns non-zero
+
 set -e
 target="dev";
-if [[ "$1" == "--prod" ]];
-then
-    target="latest";
-fi
 
 DIR="$(dirname "$(readlink -m "$0"/../)")";
 
+parameters=("--rm=true" "--tty=true" "--interactive=true" "--sig-proxy=true"
+            "--hostname=activity_reader_${target}"
+            "--env=discord_api_token" )
 
-docker run \
-            --rm=true\
-            --tty=true --interactive=true --sig-proxy=true \
-            --hostname=activity_reader_${target} \
-            --volume="${DIR}:/code" \
+if [[ "$1" == "--prod" ]];
+then
+    target="latest";
+else
+    parameters+=("--volume=${DIR}:/code")
+fi
+
+docker run "${parameters[@]}" \
             activity_reader:${target} \
             start

@@ -1,1 +1,2 @@
 discord.py
+-e git+https://github.com/TerryRPatterson/discord_bot_framework#egg=discord_bot

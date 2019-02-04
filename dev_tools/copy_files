@@ -4,6 +4,7 @@ set -e
 
 DIR="$(dirname "$(readlink -m "$0"/../)")";
 build_dir="${DIR}/build_dir"
+Dockerfile="${DIR}/Dockerfile.production"
 
 cd $DIR
 
@@ -18,3 +19,8 @@ for file in $files_to_copy
 do
     cp ${file} ${build_dir} -r
 done
+
+
+cat ${Dockerfile} |
+    sed -e "s/__UID__/$(id -u)/g" \
+        -e "s/__GID__/$(id -g)/g" > ${build_dir}/Dockerfile

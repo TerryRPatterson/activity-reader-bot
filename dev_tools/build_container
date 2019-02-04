@@ -4,7 +4,7 @@ set -e
 CURRENT_DIR=$(pwd);
 DIR="$(dirname "$(readlink -m "${0}"/../)")";
 cd ${DIR};
-pwd
+
 target="dev";
 Dockerfile="${DIR}/Dockerfile"
 
@@ -14,20 +14,19 @@ if [[ "${1}" == "--prod" ]];
 then
     target="latest";
     Dockerfile="${DIR}/Dockerfile.production"
+    ./dev_tools/copy_files
+    cd ./build_dir
+    docker build -t activity_reader:${target} .
+
 else
     parameters+=(--volume="${DIR}:/code")
-fi
-
-
-cat ${Dockerfile} |
-    sed -e "s/__UID__/$(id -u)/g" \
-        -e "s/__GID__/$(id -g)/g" |
-    docker build -t activity_reader:${target} -
+    cat ${Dockerfile} |
+        sed -e "s/__UID__/$(id -u)/g" \
+            -e "s/__GID__/$(id -g)/g" |
+        docker build -t activity_reader:${target} -
 
     docker run "${parameters[@]}" \
             activity_reader:${target} \
-            bash << EOT
-    python3.6 -m venv --clear --symlinks /code/.virtualenv
-    source /code/.virtualenv/bin/activate
-    python3.6 -m pip install -r /code/requirements.txt
-EOT
+            dev_tools/install_deps
+
+fi
