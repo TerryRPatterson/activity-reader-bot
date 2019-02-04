@@ -1,24 +1,30 @@
 #! /usr/bin/env bash
 set -e
-target="dev";
-if [[ "${1}" == "--prod" ]];
-then
-    target="latest";
-fi
+
 CURRENT_DIR=$(pwd);
 DIR="$(dirname "$(readlink -m "${0}"/../)")";
 cd ${DIR};
+pwd
+target="dev";
+Dockerfile="${DIR}/Dockerfile"
 
-cat "${DIR}/Dockerfile" |
+parameters=("--env=USER=$USER" "--rm=true" "--interactive=true"
+            "--sig-proxy=true" "--volume=/etc/localtime:/etc/localtime:ro")
+if [[ "${1}" == "--prod" ]];
+then
+    target="latest";
+    Dockerfile="${DIR}/Dockerfile.production"
+else
+    parameters+=(--volume="${DIR}:/code")
+fi
+
+
+cat ${Dockerfile} |
     sed -e "s/__UID__/$(id -u)/g" \
         -e "s/__GID__/$(id -g)/g" |
     docker build -t activity_reader:${target} -
 
-    docker run --env="USER=$USER" \
-            --rm=true \
-            --interactive=true --sig-proxy=true \
-            --volume="${DIR}:/code" \
-            --volume=/etc/localtime:/etc/localtime:ro \
+    docker run "${parameters[@]}" \
             activity_reader:${target} \
             bash << EOT
     python3.6 -m venv --clear --symlinks /code/.virtualenv

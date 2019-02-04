@@ -3,14 +3,17 @@
 import activityReader
 import discord
 from api_secrets import bot_token
+from activityReader import get_all_messages_server
 from discord_bot_framework.discord_bot import Bot
-
-bot = Bot(title="ActivityChecker", prefix="&")
+prefix="&"
+bot = Bot(title="ActivityChecker", prefix=prefix)
 finished_processing = False
 server_activity_logs = {}
 
+permission_denied = "{mention} is that command for moderators only."
 
 async def load_server_activity(server):
+    """Load the user activity for a server."""
     await bot.request_offline_members(server)
     last_posts = await activityReader.activity_logs(bot, server)
     server_activity_logs[server.id] = last_posts
@@ -36,19 +39,24 @@ async def on_ready():
 @bot.event
 async def on_message(message):
     """Update logs for incoming logs."""
-    if finished_processing and not message.author == bot.user:
-        await bot.process_message(message)
-        server_id = message.server.id
-        server_log = server_activity_logs[server_id]
-        message_info = activityReader.get_message_info(message)
-        if message_info:
-            author_id = message_info["id"]
-            if author_id in server_log:
-                author_log = server_log[author_id]
-                message_info["count"] = author_log["count"] + 1
-            else:
-                message_info["count"] = 1
-            server_log[author_id] = message_info
+    if not message.author == bot.user:
+        if finished_processing:
+            await bot.process_message(message)
+            server_id = message.server.id
+            server_log = server_activity_logs[server_id]
+            message_info = activityReader.get_message_info(message)
+            if message_info:
+                author_id = message_info["id"]
+                if author_id in server_log:
+                    author_log = server_log[author_id]
+                    message_info["count"] = author_log["count"] + 1
+                else:
+                    message_info["count"] = 1
+                server_log[author_id] = message_info
+        elif message.content.startswith(prefix):
+            message_text = (f"{message.author.mention} I am not not finished"
+                            " counting hold on.")
+            await bot.send_message(message.channel, message_text)
 
 
 @bot.command
@@ -66,6 +74,8 @@ async def pruge_reactions(message: discord.Message):
     await bot.delete_message(message)
 
 
+@bot.permissions_required(permissions=["kick_members"],
+                          check_failed=permission_denied)
 @bot.command
 async def activity_check(message: discord.Message):
     """Check all users activity."""
@@ -100,5 +110,22 @@ async def activity_check(message: discord.Message):
             await bot.send_message(target_channel, new_message_text)
         else:
             message_text = new_message_text
+
+
+@bot.permissions_required(permissions=["manage_messages"],
+                          check_failed=permission_denied)
+@bot.command
+async def delete_messages(message: discord.Message, user_id):
+    """Delete all messages from a user."""
+    server = message.server
+    author = message.author
+    server_messages = await get_all_messages_server(bot, server)
+    for server_message in server_messages:
+        if server_message.author.id == user_id:
+            await bot.delete_message(server_message)
+    await bot.delete_message(message)
+    await bot.send_message(author, "Message purge complete")
+
+
 
 bot.run(bot_token)

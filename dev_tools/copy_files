@@ -1,0 +1,20 @@
+#! /usr/bin/env bash
+
+set -e
+
+DIR="$(dirname "$(readlink -m "$0"/../)")";
+build_dir="${DIR}/build_dir"
+
+cd $DIR
+
+rm build_dir -rf
+
+mkdir build_dir
+
+files_to_copy="bot.py requirements.txt activityReader.py dev_tools
+               discord_bot_framework/discord_bot.py"
+
+for file in $files_to_copy
+do
+    cp ${file} ${build_dir} -r
+done
