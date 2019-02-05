@@ -1,4 +1,3 @@
-#! /usr/bin/env python3
 """
 Copyright 2018 Terry Patterson
 
@@ -57,7 +56,6 @@ def find_last_posts(messages):
         info = get_message_info(message)
         if info:
             id = info["id"]
-            zero_date = datetime.datetime(1, 1, 1)
             if "join_message" not in info:
                 timestamp = info["last_post"]
                 human_date = info["last_post_human"]
