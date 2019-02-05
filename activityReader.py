@@ -1,4 +1,6 @@
 """
+Functions for retrive messages and generating activity reports.
+
 Copyright 2018 Terry Patterson
 
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,8 +19,6 @@ Copyright 2018 Terry Patterson
 import calendar
 import datetime
 from collections import OrderedDict
-from os import environ
-from sys import exit
 
 
 def is_welcome_message(message):
@@ -32,9 +32,7 @@ def is_welcome_message(message):
 
 def get_message_info(message):
     """Get the information for a message."""
-    id = message.author.id
     if not message.author.bot and message.author in message.server.members:
-        discriminator = message.author.discriminator
         human_date = human_readable_date(message.timestamp)
         if not is_welcome_message(message):
             human_readable_join = human_readable_date(message.author.joined_at)
@@ -118,6 +116,7 @@ async def get_all_messages_channel(client, channel, start=None):
             start = new_messages[-1]
             messages.extend(new_messages)
     return messages
+
 
 async def get_all_messages_server(client, server):
     """Retrive the full history of the server that is visible to the user."""

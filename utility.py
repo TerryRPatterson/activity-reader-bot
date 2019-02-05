@@ -1,4 +1,6 @@
 """
+Various utility functions for activityReader project.
+
 Copyright 2018 Terry Patterson
 
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +16,16 @@ Copyright 2018 Terry Patterson
    limitations under the License.
 """
 
+
 def get_user_confirmation(message):
+    """
+    Get an affarmtive response from the user.
+
+    Args:
+        message (string): The message to ask the user.
+    Return:
+        A boolean indicate user agreement.
+    """
     vaild_postive = ["y", "yes"]
     vaild_negative = ["n", "no"]
     vaild_input_recived = False

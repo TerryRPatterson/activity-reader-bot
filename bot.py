@@ -1,5 +1,7 @@
 #! /usr/bin/env python3
 """
+The main bot logic of activity reader.
+
 Copyright 2018 Terry Patterson
 
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -87,14 +89,16 @@ async def on_message(message):
 @bot.command
 async def pruge_reactions(message: discord.Message):
     """Remove all reactions from dead users."""
-    messages = await activityReader.get_all_messages_channel(bot,
-                                                             message.channel)
-    for message in messages:
+    channel_messages = await activityReader.get_all_messages_channel(bot,
+                                                                     message
+                                                                     .channel)
+    for channel_message in channel_messages:
         for reaction in message.reactions:
             reactors = await bot.get_reaction_users(reaction)
             for reactor in reactors:
-                if reactor not in message.server.members:
-                    await bot.remove_reaction(message, reaction.emoji, reactor)
+                if reactor not in channel_message.server.members:
+                    await bot.remove_reaction(channel_message, reaction.emoji,
+                                              reactor)
     await bot.send_message(message.author, "Reaction purge complete.")
     await bot.delete_message(message)
 
@@ -150,7 +154,6 @@ async def delete_messages(message: discord.Message, user_id):
             await bot.delete_message(server_message)
     await bot.delete_message(message)
     await bot.send_message(author, "Message purge complete")
-
 
 
 bot.run(BOT_TOKEN)

@@ -12,8 +12,7 @@ rm build_dir -rf
 
 mkdir build_dir
 
-files_to_copy="bot.py requirements.txt activityReader.py dev_tools
-               discord_bot_framework/discord_bot.py"
+files_to_copy="bot.py requirements.txt activityReader.py dev_tools"
 
 for file in $files_to_copy
 do

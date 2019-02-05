@@ -1,7 +1,5 @@
 FROM python:3.6
 
-
-
 RUN mkdir /code
 
 # npm expects to use home to locate files
@@ -20,4 +18,4 @@ USER user
 # Where will we find the code
 WORKDIR /code
 
-RUN dev_tools/install_deps
+RUN install_deps

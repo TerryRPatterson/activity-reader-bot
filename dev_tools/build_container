@@ -12,6 +12,7 @@ parameters=("--env=USER=$USER" "--rm=true" "--interactive=true"
             "--sig-proxy=true" "--volume=/etc/localtime:/etc/localtime:ro")
 if [[ "${1}" == "--prod" ]];
 then
+    echo "Prod"
     target="latest";
     Dockerfile="${DIR}/Dockerfile.production"
     ./dev_tools/copy_files
@@ -19,6 +20,7 @@ then
     docker build -t activity_reader:${target} .
 
 else
+    echo "Dev"
     parameters+=(--volume="${DIR}:/code")
     cat ${Dockerfile} |
         sed -e "s/__UID__/$(id -u)/g" \
@@ -27,6 +29,6 @@ else
 
     docker run "${parameters[@]}" \
             activity_reader:${target} \
-            dev_tools/install_deps
+            install_deps
 
 fi
