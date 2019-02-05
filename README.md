@@ -42,7 +42,7 @@ This will start the bot with the git repository mounted into the
 container. Build container is not needed when the python files are
 changes, kill the bot and run `start` again.
 
-##Style Guide
+## Style Guide
 -   Code should comply with pep8
 
 -   Functions should be documented wiht doc-strings complaint with [pep-257](https://www.python.org/dev/peps/pep-0257/), and using [Googles
