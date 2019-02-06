@@ -1,16 +1,44 @@
 #! /usr/bin/env python3
+"""
+The main bot logic of activity reader.
+
+Copyright 2018 Terry Patterson
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+"""
 
 import activityReader
 import discord
-from api_secrets import bot_token
-from discord_bot_framework.discord_bot import Bot
+from os import environ, EX_CONFIG
+from activityReader import get_all_messages_server
+from discord_bot import Bot
+try:
+    BOT_TOKEN = environ["discord_api_token"]
+except KeyError:
+    print("Bot token not found. Please set discord_api_token in enviorment to"
+          " your token.")
+    exit(EX_CONFIG)
 
-bot = Bot(title="ActivityChecker", prefix="&")
+prefix = "&"
+bot = Bot(title="ActivityChecker", prefix=prefix)
 finished_processing = False
 server_activity_logs = {}
 
+permission_denied = "{mention} is that command for moderators only."
+
 
 async def load_server_activity(server):
+    """Load the user activity for a server."""
     await bot.request_offline_members(server)
     last_posts = await activityReader.activity_logs(bot, server)
     server_activity_logs[server.id] = last_posts
@@ -36,39 +64,48 @@ async def on_ready():
 @bot.event
 async def on_message(message):
     """Update logs for incoming logs."""
-    if finished_processing and not message.author == bot.user:
-        await bot.process_message(message)
-        server_id = message.server.id
-        server_log = server_activity_logs[server_id]
-        message_info = activityReader.get_message_info(message)
-        if message_info:
-            author_id = message_info["id"]
-            if author_id in server_log:
-                author_log = server_log[author_id]
-                message_info["count"] = author_log["count"] + 1
-            else:
-                message_info["count"] = 1
-            server_log[author_id] = message_info
+    if not message.author == bot.user:
+        if finished_processing:
+            await bot.process_message(message)
+            server_id = message.server.id
+            server_log = server_activity_logs[server_id]
+            message_info = activityReader.get_message_info(message)
+            if message_info:
+                author_id = message_info["id"]
+                if author_id in server_log:
+                    author_log = server_log[author_id]
+                    message_info["count"] = author_log["count"] + 1
+                else:
+                    message_info["count"] = 1
+                server_log[author_id] = message_info
+        elif message.content.startswith(prefix):
+            message_text = (f"{message.author.mention} I am not not finished"
+                            " counting hold on.")
+            await bot.send_message(message.channel, message_text)
 
 
+@bot.permissions_required(permissions=["manage_messages"],
+                          check_failed=permission_denied)
 @bot.command
 async def pruge_reactions(message: discord.Message):
     """Remove all reactions from dead users."""
-    reaction_authors = []
-    messages = await activityReader.get_all_messages_channel(bot,
-                                                             message.channel)
-    for message in messages:
+    channel_messages = await activityReader.get_all_messages_channel(bot,
+                                                                     message
+                                                                     .channel)
+    for channel_message in channel_messages:
         for reaction in message.reactions:
             reactors = await bot.get_reaction_users(reaction)
             for reactor in reactors:
-                if reactor not in message.server.members:
-                    await bot.remove_reaction(message, reaction.emoji, reactor)
+                if reactor not in channel_message.server.members:
+                    await bot.remove_reaction(channel_message, reaction.emoji,
+                                              reactor)
     await bot.send_message(message.author, "Reaction purge complete.")
     await bot.delete_message(message)
 
 
+@bot.permissions_required(permissions=["kick_members"],
+                          check_failed=permission_denied)
 @bot.command
-@bot.admin
 async def activity_check(message: discord.Message):
     """Check all users activity."""
     target_channel = message.channel
@@ -103,4 +140,20 @@ async def activity_check(message: discord.Message):
         else:
             message_text = new_message_text
 
-bot.run(bot_token)
+
+@bot.permissions_required(permissions=["manage_messages"],
+                          check_failed=permission_denied)
+@bot.command
+async def delete_messages(message: discord.Message, user_id):
+    """Delete all messages from a user."""
+    server = message.server
+    author = message.author
+    server_messages = await get_all_messages_server(bot, server)
+    for server_message in server_messages:
+        if server_message.author.id == user_id:
+            await bot.delete_message(server_message)
+    await bot.delete_message(message)
+    await bot.send_message(author, "Message purge complete")
+
+
+bot.run(BOT_TOKEN)

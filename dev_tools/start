@@ -1,0 +1,22 @@
+#! /usr/bin/env bash
+
+
+set -e
+target="dev";
+
+DIR="$(dirname "$(readlink -m "$0"/../)")";
+
+parameters=("--rm=true" "--tty=true" "--interactive=true" "--sig-proxy=true"
+            "--hostname=activity_reader_${target}"
+            "--env=discord_api_token" )
+
+if [[ "$1" == "--prod" ]];
+then
+    target="latest";
+else
+    parameters+=("--volume=${DIR}:/code")
+fi
+
+docker run "${parameters[@]}" \
+            activity_reader:${target} \
+            start

@@ -1,33 +1,24 @@
-#! /usr/bin/env python3
 """
-MIT License
+Functions for retrive messages and generating activity reports.
 
-Copyright (c) 2018 Terry Patterson
+Copyright 2018 Terry Patterson
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+       http://www.apache.org/licenses/LICENSE-2.0
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
 """
 
 import calendar
 import datetime
 from collections import OrderedDict
-from os import environ
-from sys import exit
 
 
 def is_welcome_message(message):
@@ -41,9 +32,7 @@ def is_welcome_message(message):
 
 def get_message_info(message):
     """Get the information for a message."""
-    id = message.author.id
     if not message.author.bot and message.author in message.server.members:
-        discriminator = message.author.discriminator
         human_date = human_readable_date(message.timestamp)
         if not is_welcome_message(message):
             human_readable_join = human_readable_date(message.author.joined_at)
@@ -65,7 +54,6 @@ def find_last_posts(messages):
         info = get_message_info(message)
         if info:
             id = info["id"]
-            zero_date = datetime.datetime(1, 1, 1)
             if "join_message" not in info:
                 timestamp = info["last_post"]
                 human_date = info["last_post_human"]
@@ -85,6 +73,19 @@ def find_last_posts(messages):
     return last_posts
 
 
+def create_new_user(name, discriminator, join_date, last_post_human="",
+                    last_post=float("-inf"), count=0):
+    """Return a new user dict."""
+    return {
+                        "last_post": last_post,
+                        "count": count,
+                        "name": name,
+                        "discriminator": discriminator,
+                        "last_post_human": last_post_human,
+                        "join_date": join_date
+    }
+
+
 def human_readable_date(timestamp):
     """Make the timestamp human readable."""
     month = calendar.month_name[timestamp.month]
@@ -102,13 +103,18 @@ async def get_all_messages_channel(client, channel, start=None):
     if start is None:
         start = channel.created_at
     messages = []
-    async for message in client.logs_from(channel, after=start, reverse=True):
-        messages.append(message)
-    if len(messages) > 0:
-        more_messages = await get_all_messages_channel(client, channel,
-                                                       start=messages[-1])
-        if len(more_messages) > 0:
-            messages.extend(more_messages)
+    done = False
+    while (not done):
+        new_messages = []
+        async for message in client.logs_from(channel, after=start,
+                                              reverse=True):
+            new_messages.append(message)
+
+        if len(new_messages) == 0:
+            done = True
+        else:
+            start = new_messages[-1]
+            messages.extend(new_messages)
     return messages
 
 
