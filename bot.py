@@ -11,6 +11,7 @@ server_activity_logs = {}
 
 
 async def load_server_activity(server):
+    """Load activity for a server"""
     await bot.request_offline_members(server)
     last_posts = await activityReader.activity_logs(bot, server)
     server_activity_logs[server.id] = last_posts
@@ -35,7 +36,16 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
-    """Update logs for incoming logs."""
+    """Update logs for incoming logs.
+
+    Keep the server logs up to date with the latest messages.
+
+    Args:
+        Message(discord.Message): The messages containing the command.
+
+    Sends:
+        None
+    """
     if finished_processing and not message.author == bot.user:
         await bot.process_message(message)
         server_id = message.server.id
@@ -53,8 +63,18 @@ async def on_message(message):
 
 @bot.command
 async def pruge_reactions(message: discord.Message):
-    """Remove all reactions from dead users."""
-    reaction_authors = []
+    """Remove all reactions from dead users.
+
+    Remove all reactions in the messages channel from users no longer in the
+        server.
+
+    Args:
+        Message(discord.Message): The messages containing the command.
+
+    Sends:
+            A confirmation messages when the purge is complete via dm.
+
+    """
     messages = await activityReader.get_all_messages_channel(bot,
                                                              message.channel)
     for message in messages:
@@ -70,7 +90,17 @@ async def pruge_reactions(message: discord.Message):
 @bot.command
 @bot.admin
 async def activity_check(message: discord.Message):
-    """Check all users activity."""
+    """Check all users activity.
+
+    Report all users activity on the server including user join date, last post
+        and total number of posts.
+
+    Args:
+        Message(discord.Message): The messages containing the command.
+
+    Sends:
+            The report to the current channel.
+    """
     target_channel = message.channel
     target_server = message.server
     posts = []
