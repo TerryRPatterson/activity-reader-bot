@@ -4,11 +4,16 @@
 set -e
 target="dev";
 
+# get our local docker network
+NET_IF=$(my_public_ip)
+
+
 DIR="$(dirname "$(readlink -m "$0"/../)")";
 
 parameters=("--rm=true" "--tty=true" "--interactive=true" "--sig-proxy=true"
             "--hostname=activity_reader_${target}"
-            "--env=discord_api_token" )
+            "--env=discord_api_token=${discord_api_token}"
+            "--env=NET_IF=${NET_IF}")
 
 if [[ "$1" == "--prod" ]];
 then

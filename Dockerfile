@@ -15,3 +15,5 @@ ENV HOME /code
 
 ENV PATH $PATH:/code/.virtualenv/bin
 ENV PATH $PATH:/code/dev_tools/cbin
+
+EXPOSE 27017 27017/tcp

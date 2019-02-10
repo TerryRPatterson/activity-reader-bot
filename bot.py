@@ -16,12 +16,23 @@ Copyright 2018 Terry Patterson
    See the License for the specific language governing permissions and
    limitations under the License.
 """
+import datetime
 
 import activityReader
 import discord
 from os import environ, EX_CONFIG
+import mongoengine as mongo
+
+from model import Server
 from activityReader import get_all_messages_server
+from discord import Game as RichStatus, Status
 from discord_bot import Bot
+
+zero_date = datetime.datetime(year=1, month=1, day=1)
+
+net_if = environ["NET_IF"]
+mongo.connect("activity_reader", host=net_if)
+
 try:
     BOT_TOKEN = environ["discord_api_token"]
 except KeyError:
@@ -31,53 +42,85 @@ except KeyError:
 
 prefix = "&"
 bot = Bot(title="ActivityChecker", prefix=prefix)
-finished_processing = False
-server_activity_logs = {}
+start_done = False
+server_records = {}
 
 permission_denied = "{mention} is that command for moderators only."
 
 
-async def load_server_activity(server):
+async def load_server_activity(server, server_record, start, end):
     """Load the user activity for a server."""
     await bot.request_offline_members(server)
-    last_posts = await activityReader.activity_logs(bot, server)
-    server_activity_logs[server.id] = last_posts
-    return last_posts
+    await activityReader.activity_logs(bot, server, server_record, start, end)
+
+
+def get_server_record(server):
+    server_record = Server.objects.with_id(server.id)
+    if server_record is None:
+        server_record = Server(name=server.name, id=server.id)
+        for member in server.members:
+            if member.id not in server_record.last_posts:
+
+                server_record.last_posts[member.id] = {
+                                                        "posts": 0,
+                                                        "last_post": zero_date,
+                                                      }
+        print("Record created")
+        server_record.save()
+    return server_record
 
 
 @bot.event
 async def on_ready():
     """Startup sequence."""
-    print('Logged in as')
+    bot_start_time = datetime.datetime.now()
+    await bot.set_state(text="Counting all new messages.",
+                        status="do_not_disturb")
+    print("Logged in as")
     print(bot.user.name)
     print(bot.user.id)
-    print('------')
+    print("------")
+    last_processed_ids = {}
+    for server in bot.servers:
+        server_record = get_server_record(server)
+        server_records[server.id] = server_record
+        last_processed_ids[server.id] = server_record.last_processed_id
+
+    global start_done
+    start_done = True
+
+    # Lift the lock once we have all the information needed
     for server in bot.servers:
         print(f"Loading {server.name}")
-        server_log = await load_server_activity(server)
-        server_activity_logs[server.id] = server_log
+        server_record = server_records[server.id]
+        await load_server_activity(server, server_record, end=bot_start_time,
+                                   start=last_processed_ids[server.id])
     print("Servers loaded.")
-    global finished_processing
-    finished_processing = True
+
+    await bot.set_state()
 
 
 @bot.event
 async def on_message(message):
     """Update logs for incoming logs."""
     if not message.author == bot.user:
-        if finished_processing:
+        if start_done:
             await bot.process_message(message)
-            server_id = message.server.id
-            server_log = server_activity_logs[server_id]
-            message_info = activityReader.get_message_info(message)
-            if message_info:
-                author_id = message_info["id"]
-                if author_id in server_log:
-                    author_log = server_log[author_id]
-                    message_info["count"] = author_log["count"] + 1
-                else:
-                    message_info["count"] = 1
-                server_log[author_id] = message_info
+            if message.server is not None:
+                server_id = message.server.id
+                server_record = server_records[server_id]
+                message_info = activityReader.get_message_info(message)
+                if message_info:
+                    author_id = message_info["id"]
+                    if author_id in server_record.last_posts:
+                        server_record.last_posts[author_id]["posts"] += 1
+                        server_record.last_posts[author_id]["last_post"] = \
+                            message.timestamp
+                    else:
+                        server_record.last_posts[author_id] = {
+                                                "last_post": message.timestamp,
+                                                "posts": 1,
+                            }
         elif message.content.startswith(prefix):
             message_text = (f"{message.author.mention} I am not not finished"
                             " counting hold on.")
@@ -106,26 +149,47 @@ async def pruge_reactions(message: discord.Message):
 @bot.permissions_required(permissions=["kick_members"],
                           check_failed=permission_denied)
 @bot.command
-async def activity_check(message: discord.Message):
+async def activity_check(message: discord.Message,
+                         server_id: "optional" = None):
     """Check all users activity."""
+    if message.server is None and server_id is None:
+        await bot.send_message(message.author, "check_messages requires"
+                                               " a server id in direct"
+                                               " message.")
+        return
+    if server_id is not None:
+        for server in bot.servers:
+            if server.id == server_id:
+                target_server = server
+                break
+        else:
+            await bot.send_message(message.author,
+                                   f"Server {server_id} not found")
+            return
+    else:
+        target_server = message.server
+
     target_channel = message.channel
-    target_server = message.server
+
     posts = []
     non_posts = []
-    server_logs = server_activity_logs[target_server.id]
-    for user in server_logs.values():
-        if "join_date" not in user:
-            user["join_date"] = "No join date detected."
-        posts.append(f"Name: **{user['mention']}**"
-                     f" Last Post: **{user['last_post_human']}**"
-                     f" Join date: **{user['join_date']}**"
-                     f" Total Posts: **{user['count']}**\n")
-
+    server_record = server_records[target_server.id]
     for member in target_server.members:
-        if not member.bot and member.id not in server_logs:
-            join_date = activityReader.human_readable_date(member.joined_at)
-            non_posts.append(f"**{member.mention}** has not posted."
-                             f"They join at **{join_date}**\n")
+        if not member.bot:
+            if member.id not in server_record.last_posts:
+                join_date = activityReader.human_readable_date(member.joined_at)
+                non_posts.append(f"**{member.mention}** has not posted."
+                                 f"They join at **{join_date}**\n")
+            else:
+                member_record = server_record.last_posts[member.id]
+                count = member_record["posts"]
+                last_post = member_record["last_post"]
+                last_post_human = activityReader.human_readable_date(last_post)
+                join_date = activityReader.human_readable_date(member.joined_at)
+                posts.append(f"Name: **{member.mention}**"
+                             f" Last Post: **{last_post_human}**"
+                             f" Join date: **{join_date}**"
+                             f" Total Posts: **{count}**\n")
 
     message_text = ""
     lines = non_posts + posts
@@ -154,6 +218,16 @@ async def delete_messages(message: discord.Message, user_id):
             await bot.delete_message(server_message)
     await bot.delete_message(message)
     await bot.send_message(author, "Message purge complete")
+
+
+@bot.event
+async def on_member_join(new_member):
+    server = new_member.server
+    server_record = server_records[server]
+    server_record.last_posts[new_member] = {
+                                                "posts": 0,
+                                                "last_post": zero_date
+                                            }
 
 
 bot.run(BOT_TOKEN)
