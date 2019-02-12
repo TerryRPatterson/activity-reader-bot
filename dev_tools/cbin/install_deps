@@ -1,6 +1,6 @@
 #! /usr/bin/env bash
 set -e
 
-python3.6 -m venv --clear --symlinks .virtualenv
+python -m venv --clear --symlinks .virtualenv
 source /code/.virtualenv/bin/activate
 pip install -r requirements.txt

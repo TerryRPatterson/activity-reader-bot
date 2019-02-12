@@ -1,7 +1,7 @@
 import mongoengine as mdb
 
 
-class Server(mdb.Document):
+class Guild(mdb.Document):
     name = name = mdb.StringField(required=True)
 
     last_processed_id = mdb.LongField(required=True, default=0)

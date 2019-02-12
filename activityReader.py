@@ -18,16 +18,16 @@ Copyright 2018 Terry Patterson
 
 import calendar
 import datetime
-
+from discord import TextChannel
 from discord.utils import snowflake_time
 import mongoengine as mdb
-from model import Server
+from model import Guild
 
 
 def is_welcome_message(message):
     """Determine if a message is the system welcome message."""
     if hasattr(message.author, "joined_at"):
-        delta = message.timestamp - message.author.joined_at
+        delta = message.created_at - message.author.joined_at
         if delta.total_seconds() < 5:
             return True
     return False
@@ -35,9 +35,9 @@ def is_welcome_message(message):
 
 def get_message_info(message):
     """Get the information for a message."""
-    if not message.author.bot and message.author in message.server.members:
+    if not message.author.bot and message.author in message.guild.members:
         info = {
-                                "last_post": message.timestamp,
+                                "last_post": message.created_at,
                                 "id": message.author.id,
             }
         if is_welcome_message(message):
@@ -47,30 +47,27 @@ def get_message_info(message):
     return False
 
 
-def find_last_posts(messages, server_record):
-    """Find the last post for every user."""
-    server_last_post_time = snowflake_time(server_record.last_processed_id)
-    last_processed_id = server_record.last_processed_id
-    for message in messages:
-        message_time = snowflake_time(message.id)
-        if server_last_post_time < message_time:
-            last_processed_id = message.id
-            server_last_post_time = message_time
-        info = get_message_info(message)
-        if info:
-            id = info["id"]
-            if "join_message" not in info:
-                timestamp = info["last_post"]
-                if id in server_record.last_posts:
-                    server_record.last_posts[id]["posts"] += 1
-                    if server_record.last_posts[id]["last_post"] < timestamp:
-                        server_record.last_posts[id]["last_post"] = timestamp
-                else:
+def process_post(message, guild_record, last_processed_id):
+    guild_last_post_time = snowflake_time(last_processed_id)
+    message_time = snowflake_time(message.id)
+    if guild_last_post_time < message_time:
+        last_processed_id = message.id
+        guild_last_post_time = message_time
+    info = get_message_info(message)
+    if info:
+        id = str(info["id"])
+        if "join_message" not in info:
+            timestamp = info["last_post"]
+            if id in guild_record.last_posts:
+                guild_record.last_posts[id]["posts"] += 1
+                if guild_record.last_posts[id]["last_post"] < timestamp:
+                    guild_record.last_posts[id]["last_post"] = timestamp
+            else:
 
-                    server_record.last_posts[id] = {
-                                                        "posts": 1,
-                                                        "last_post": timestamp,
-                                                    }
+                guild_record.last_posts[id] = {
+                                                    "posts": 1,
+                                                    "last_post": timestamp,
+                                                }
     return last_processed_id
 
 
@@ -86,38 +83,26 @@ def human_readable_date(timestamp):
         return f"{month} {day} {year}"
 
 
-async def get_all_messages_channel(client, channel, start=None, end=None):
-    """Get all the messages in the channel."""
-    if start is None:
-        start = channel.created_at
-    messages = []
-    done = False
-    while (not done):
-        done = True
-        async for message in client.logs_from(channel, after=start,
-                                              reverse=True):
-            count += 1
-            if end is not None and message.timestamp >= end:
-                done = True
-                break
-            yield message
-        else:
-            done = False
+async def get_all_messages_guild(guild, start=None, end=None):
+    """Retrive the full history of the guild that is visible to the user."""
+    if type(start) == int:
+        start = snowflake_time(start)
+    if type(end) == int:
+        end = snowflake_time(end)
+
+    for channel in guild.channels:
+        if isinstance(channel, TextChannel):
+            if channel.permissions_for(guild.me).read_messages:
+                async for message in channel.history(after=start, reverse=True,
+                                                     before=end, limit=None):
+                    yield message
 
 
-async def get_all_messages_server(client, server, start=None, end=None):
-    """Retrive the full history of the server that is visible to the user."""
-    messages = []
-    for channel in server.channels:
-        if channel.permissions_for(server.me).read_messages:
-            channel_messages = await get_all_messages_channel(client, channel,
-                                                              start, end)
-            messages.extend(channel_messages)
-    return messages
-
-
-async def activity_logs(client, server, server_record, start, end):
+async def activity_logs(guild, guild_record, start, end):
     """Get a log of all users activity."""
-    messages = await get_all_messages_server(client, server, start, end)
-    server_record.last_processed_id = find_last_posts(messages, server_record)
-    server_record.save()
+    guild_last_post_time = snowflake_time(guild_record.last_processed_id)
+    last_processed_id = guild_record.last_processed_id
+    async for message in get_all_messages_guild(guild, start, end):
+        guild_record.last_processed_id = int(process_post(message, guild_record,
+                                                          last_processed_id))
+    guild_record.save()

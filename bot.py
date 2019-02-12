@@ -17,16 +17,19 @@ Copyright 2018 Terry Patterson
    limitations under the License.
 """
 import datetime
+import typing
+
+import discord
 
 import activityReader
-import discord
+
 from os import environ, EX_CONFIG
 import mongoengine as mongo
+from discord import TextChannel
+from discord.ext.commands import Bot
 
-from model import Server
-from activityReader import get_all_messages_server
-from discord import Game as RichStatus, Status
-from discord_bot import Bot
+from model import Guild
+from activityReader import get_all_messages_guild, activity_logs
 
 zero_date = datetime.datetime(year=1, month=1, day=1)
 
@@ -41,63 +44,59 @@ except KeyError:
     exit(EX_CONFIG)
 
 prefix = "&"
-bot = Bot(title="ActivityChecker", prefix=prefix)
+bot = Bot(prefix)
 start_done = False
-server_records = {}
+guild_records = {}
 
 permission_denied = "{mention} is that command for moderators only."
 
 
-async def load_server_activity(server, server_record, start, end):
-    """Load the user activity for a server."""
-    await bot.request_offline_members(server)
-    await activityReader.activity_logs(bot, server, server_record, start, end)
+async def load_guild_activity(guild, guild_record, start, end):
+    """Load the user activity for a guild."""
+    await activityReader.activity_logs(guild, guild_record, start, end)
 
 
-def get_server_record(server):
-    server_record = Server.objects.with_id(server.id)
-    if server_record is None:
-        server_record = Server(name=server.name, id=server.id)
-        for member in server.members:
-            if member.id not in server_record.last_posts:
+def get_guild_record(guild):
+    guild_record = Guild.objects.with_id(guild.id)
+    if guild_record is None:
+        guild_record = Guild(name=guild.name, id=guild.id)
+        for member in guild.members:
+            member_id = str(member.id)
+            if member_id not in guild_record.last_posts:
 
-                server_record.last_posts[member.id] = {
+                guild_record.last_posts[member_id] = {
                                                         "posts": 0,
                                                         "last_post": zero_date,
                                                       }
         print("Record created")
-        server_record.save()
-    return server_record
+        guild_record.save()
+    return guild_record
 
 
 @bot.event
 async def on_ready():
     """Startup sequence."""
     bot_start_time = datetime.datetime.now()
-    await bot.set_state(text="Counting all new messages.",
-                        status="do_not_disturb")
     print("Logged in as")
     print(bot.user.name)
     print(bot.user.id)
     print("------")
     last_processed_ids = {}
-    for server in bot.servers:
-        server_record = get_server_record(server)
-        server_records[server.id] = server_record
-        last_processed_ids[server.id] = server_record.last_processed_id
+    for guild in bot.guilds:
+        guild_record = get_guild_record(guild)
+        guild_records[guild.id] = guild_record
+        last_processed_ids[guild.id] = guild_record.last_processed_id
 
     global start_done
     start_done = True
 
     # Lift the lock once we have all the information needed
-    for server in bot.servers:
-        print(f"Loading {server.name}")
-        server_record = server_records[server.id]
-        await load_server_activity(server, server_record, end=bot_start_time,
-                                   start=last_processed_ids[server.id])
-    print("Servers loaded.")
-
-    await bot.set_state()
+    for guild in bot.guilds:
+        print(f"Loading {guild.name}")
+        guild_record = guild_records[guild.id]
+        await activity_logs(guild, guild_record, end=bot_start_time,
+                            start=last_processed_ids[guild.id])
+    print("Guilds loaded.")
 
 
 @bot.event
@@ -105,30 +104,28 @@ async def on_message(message):
     """Update logs for incoming logs."""
     if not message.author == bot.user:
         if start_done:
-            await bot.process_message(message)
-            if message.server is not None:
-                server_id = message.server.id
-                server_record = server_records[server_id]
+            await bot.process_commands(message)
+            if message.guild is not None:
+                guild_id = message.guild.id
+                guild_record = guild_records[guild_id]
                 message_info = activityReader.get_message_info(message)
                 if message_info:
-                    author_id = message_info["id"]
-                    if author_id in server_record.last_posts:
-                        server_record.last_posts[author_id]["posts"] += 1
-                        server_record.last_posts[author_id]["last_post"] = \
-                            message.timestamp
+                    author_id = str(message_info["id"])
+                    if author_id in guild_record.last_posts:
+                        guild_record.last_posts[author_id]["posts"] += 1
+                        guild_record.last_posts[author_id]["last_post"] = \
+                            message.created_at
                     else:
-                        server_record.last_posts[author_id] = {
-                                                "last_post": message.timestamp,
+                        guild_record.last_posts[author_id] = {
+                                                "last_post": message.created_at,
                                                 "posts": 1,
                             }
         elif message.content.startswith(prefix):
             message_text = (f"{message.author.mention} I am not not finished"
                             " counting hold on.")
-            await bot.send_message(message.channel, message_text)
+            await bot.send(message.channel, message_text)
 
 
-@bot.permissions_required(permissions=["manage_messages"],
-                          check_failed=permission_denied)
 @bot.command
 async def pruge_reactions(message: discord.Message):
     """Remove all reactions from dead users."""
@@ -139,49 +136,44 @@ async def pruge_reactions(message: discord.Message):
         for reaction in message.reactions:
             reactors = await bot.get_reaction_users(reaction)
             for reactor in reactors:
-                if reactor not in channel_message.server.members:
-                    await bot.remove_reaction(channel_message, reaction.emoji,
-                                              reactor)
-    await bot.send_message(message.author, "Reaction purge complete.")
-    await bot.delete_message(message)
+                if reactor not in channel_message.guild.members:
+                    await channel_message.remove_reaction(reaction.emoji,
+                                                          reactor)
+    await bot.send(message.author, "Reaction purge complete.")
+    await message.delete()
 
 
-@bot.permissions_required(permissions=["kick_members"],
-                          check_failed=permission_denied)
-@bot.command
-async def activity_check(message: discord.Message,
-                         server_id: "optional" = None):
+@bot.command()
+async def activity_check(context, guild_id: typing.Optional[discord.Guild] = None):
     """Check all users activity."""
-    if message.server is None and server_id is None:
-        await bot.send_message(message.author, "check_messages requires"
-                                               " a server id in direct"
+    if context.guild is None and guild_id is None:
+        await context.author.send("check_messages requires"
+                                               " a guild id in direct"
                                                " message.")
         return
-    if server_id is not None:
-        for server in bot.servers:
-            if server.id == server_id:
-                target_server = server
+    if guild_id is not None:
+        for guild in bot.guilds:
+            if guild.id == guild_id:
+                target_guild = guild
                 break
         else:
-            await bot.send_message(message.author,
-                                   f"Server {server_id} not found")
+            await context.author.send(f"guild {guild_id} not found")
             return
     else:
-        target_server = message.server
-
-    target_channel = message.channel
+        target_guild = context.guild
 
     posts = []
     non_posts = []
-    server_record = server_records[target_server.id]
-    for member in target_server.members:
+    guild_record = guild_records[target_guild.id]
+    for member in target_guild.members:
         if not member.bot:
-            if member.id not in server_record.last_posts:
+            member_id = str(member.id)
+            if member_id not in guild_record.last_posts:
                 join_date = activityReader.human_readable_date(member.joined_at)
                 non_posts.append(f"**{member.mention}** has not posted."
                                  f"They join at **{join_date}**\n")
             else:
-                member_record = server_record.last_posts[member.id]
+                member_record = guild_record.last_posts[member_id]
                 count = member_record["posts"]
                 last_post = member_record["last_post"]
                 last_post_human = activityReader.human_readable_date(last_post)
@@ -197,34 +189,32 @@ async def activity_check(message: discord.Message,
     for index, line in enumerate(lines):
         new_message_text = message_text + line
         if len(new_message_text) > 2000:
-            await bot.send_message(target_channel, message_text)
+            await context.send(message_text)
             message_text = line
         elif index + 1 == total_lines:
-            await bot.send_message(target_channel, new_message_text)
+            await context.send(new_message_text)
         else:
             message_text = new_message_text
 
 
-@bot.permissions_required(permissions=["manage_messages"],
-                          check_failed=permission_denied)
 @bot.command
 async def delete_messages(message: discord.Message, user_id):
     """Delete all messages from a user."""
-    server = message.server
+    guild = message.guild
     author = message.author
-    server_messages = await get_all_messages_server(bot, server)
-    for server_message in server_messages:
-        if server_message.author.id == user_id:
-            await bot.delete_message(server_message)
-    await bot.delete_message(message)
-    await bot.send_message(author, "Message purge complete")
+    guild_messages = await get_all_messages_guild(bot, guild)
+    for guild_message in guild_messages:
+        if guild_message.author.id == user_id:
+            await guild_message.delete()
+    await message.delete()
+    await bot.send(author, "Message purge complete")
 
 
 @bot.event
 async def on_member_join(new_member):
-    server = new_member.server
-    server_record = server_records[server]
-    server_record.last_posts[new_member] = {
+    guild = new_member.guild
+    guild_record = guild_records[guild]
+    guild_record.last_posts[new_member] = {
                                                 "posts": 0,
                                                 "last_post": zero_date
                                             }
