@@ -12,7 +12,8 @@ rm build_dir -rf
 
 mkdir build_dir
 
-files_to_copy="bot.py requirements.txt activityReader.py dev_tools"
+files_to_copy="bot.py requirements.txt activityReader.py dev_tools model.py"
+files_to_copy+=" SpecialDict.py"
 
 for file in $files_to_copy
 do

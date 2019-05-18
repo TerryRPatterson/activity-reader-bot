@@ -18,10 +18,10 @@ Copyright 2018 Terry Patterson
 
 import calendar
 import datetime
+
+from contextlib import AsyncExitStack
 from discord import TextChannel
 from discord.utils import snowflake_time
-import mongoengine as mdb
-from model import Guild
 
 
 def is_welcome_message(message):
@@ -47,15 +47,14 @@ def get_message_info(message):
     return False
 
 
-def process_post(message, guild_record, last_processed_id):
-    guild_last_post_time = snowflake_time(last_processed_id)
-    message_time = snowflake_time(message.id)
-    if guild_last_post_time < message_time:
-        last_processed_id = message.id
-        guild_last_post_time = message_time
+def process_post(message, guild_record, last_processed):
+    message_time = message.created_at
+    if last_processed < message_time:
+        last_processed = message.id
+        last_processed = message_time
     info = get_message_info(message)
     if info:
-        id = str(info["id"])
+        id = info["id"]
         if "join_message" not in info:
             timestamp = info["last_post"]
             if id in guild_record.last_posts:
@@ -68,7 +67,7 @@ def process_post(message, guild_record, last_processed_id):
                                                     "posts": 1,
                                                     "last_post": timestamp,
                                                 }
-    return last_processed_id
+    return last_processed
 
 
 def human_readable_date(timestamp):
@@ -89,20 +88,21 @@ async def get_all_messages_guild(guild, start=None, end=None):
         start = snowflake_time(start)
     if type(end) == int:
         end = snowflake_time(end)
-
     for channel in guild.channels:
         if isinstance(channel, TextChannel):
             if channel.permissions_for(guild.me).read_messages:
-                async for message in channel.history(after=start, reverse=True,
-                                                     before=end, limit=None):
+                async for message in channel.history(after=start,
+                                                     oldest_first=True,
+                                                     before=end,
+                                                     limit=None):
                     yield message
 
 
 async def activity_logs(guild, guild_record, start, end):
     """Get a log of all users activity."""
-    guild_last_post_time = snowflake_time(guild_record.last_processed_id)
-    last_processed_id = guild_record.last_processed_id
+    last_processed = guild_record.last_processed
     async for message in get_all_messages_guild(guild, start, end):
-        guild_record.last_processed_id = int(process_post(message, guild_record,
-                                                          last_processed_id))
-    guild_record.save()
+        guild_record.last_processed = process_post(message, guild_record,
+                                                   last_processed)
+    guild_record['last_posts'].set_modified()
+    await guild_record.commit()

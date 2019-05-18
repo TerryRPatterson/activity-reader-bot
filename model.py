@@ -1,11 +1,19 @@
-import mongoengine as mdb
+import datetime
+from SpecialDict import IdDictField
+from umongo import Document, fields, validate
+
+zero_date = datetime.datetime(year=2015, month=1, day=1)
 
 
-class Guild(mdb.Document):
-    name = name = mdb.StringField(required=True)
+def get_model(instance):
+    @instance.register
+    class Guild(Document):
+        name = fields.StringField(required=True)
 
-    last_processed_id = mdb.LongField(required=True, default=0)
+        last_processed = fields.DateTimeField(required=True, default=zero_date)
 
-    id = mdb.LongField(required=True, primary_key=True)
+        id = fields.IntegerField(required=True, attribute='_id')
 
-    last_posts = mdb.DictField(required=True, default={})
+        last_posts = IdDictField(required=True)
+
+    return Guild
