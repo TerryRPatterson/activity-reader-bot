@@ -1,2 +1,4 @@
-discord.py
--e git+https://github.com/TerryRPatterson/discord_bot_framework#egg=discord-bot-framework-terryp
+git+https://github.com/Rapptz/discord.py@rewrite
+umongo[motor]
+python-dateutil
+aiohttp
