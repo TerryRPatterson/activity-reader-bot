@@ -19,7 +19,6 @@ Copyright 2018 Terry Patterson
 import calendar
 import datetime
 
-from contextlib import AsyncExitStack
 from discord import TextChannel
 from discord.utils import snowflake_time
 
@@ -57,13 +56,13 @@ def process_post(message, guild_record, last_processed):
         id = info["id"]
         if "join_message" not in info:
             timestamp = info["last_post"]
-            if id in guild_record.last_posts:
-                guild_record.last_posts[id]["posts"] += 1
-                if guild_record.last_posts[id]["last_post"] < timestamp:
-                    guild_record.last_posts[id]["last_post"] = timestamp
+            if id in guild_record['last_posts']:
+                guild_record['last_posts'][id]["posts"] += 1
+                if guild_record['last_posts'][id]["last_post"] < timestamp:
+                    guild_record['last_posts'][id]["last_post"] = timestamp
             else:
 
-                guild_record.last_posts[id] = {
+                guild_record['last_posts'][id] = {
                                                     "posts": 1,
                                                     "last_post": timestamp,
                                                 }
@@ -100,9 +99,7 @@ async def get_all_messages_guild(guild, start=None, end=None):
 
 async def activity_logs(guild, guild_record, start, end):
     """Get a log of all users activity."""
-    last_processed = guild_record.last_processed
+    last_processed = guild_record['last_processed']
     async for message in get_all_messages_guild(guild, start, end):
-        guild_record.last_processed = process_post(message, guild_record,
-                                                   last_processed)
-    guild_record['last_posts'].set_modified()
-    await guild_record.commit()
+        guild_record['last_processed'] = process_post(message, guild_record,
+                                                      last_processed)
