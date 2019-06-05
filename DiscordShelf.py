@@ -1,4 +1,6 @@
 from shelve import DbfilenameShelf
+from contextlib import contextmanager
+
 
 class DiscordShelf(DbfilenameShelf):
     def __contains__(self, key):
@@ -24,3 +26,11 @@ class DiscordShelf(DbfilenameShelf):
 
 def open(filename, flag='c', protocol=None, writeback=False):
     return DiscordShelf(filename, flag, protocol, writeback)
+
+@contextmanager
+def shelf(filename, flag='c', protocol=None, writeback=False):
+    try:
+        f = open(filename, flag, protocol, writeback)
+        yield f
+    finally:
+        f.close()
