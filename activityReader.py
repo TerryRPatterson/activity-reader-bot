@@ -51,6 +51,7 @@ def process_post(message, guild_record, last_processed):
             if guild_record.last_posts[id]["last_post"] < timestamp:
                 guild_record.last_posts[id]["last_post"] = timestamp
 
+        else:
             guild_record.last_posts[id] = {
                                                 "posts": 1,
                                                 "last_post": timestamp,

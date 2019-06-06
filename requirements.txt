@@ -3,3 +3,4 @@ aiohttp
 python-box
 pyyaml
 setuptools
+pyinstaller

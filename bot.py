@@ -29,6 +29,7 @@ import activityReader
 
 from os import environ, EX_CONFIG
 from concurrent.futures import ThreadPoolExecutor
+from sys import stdin, exit
 
 from discord.ext.commands import Bot, is_owner
 from discord.errors import NotFound
@@ -38,6 +39,8 @@ from activityReader import (get_all_messages_guild, activity_logs,
                             human_readable_date)
 from Guild import Guild
 
+
+
 loop = asyncio.get_event_loop()
 
 zero_date = datetime.datetime(year=2015, month=1, day=1)
@@ -45,12 +48,19 @@ zero_date = datetime.datetime(year=2015, month=1, day=1)
 pool = ThreadPoolExecutor()
 
 
-try:
-    BOT_TOKEN = environ["discord_api_token"]
-except KeyError:
-    print("Bot token not found. Please set discord_api_token in environment to"
-          " your token.")
-    exit(EX_CONFIG)
+def command_handler():
+    command = stdin.readline()
+    command = command.strip()
+    if command != 'exit':
+        print(f'Unknown command {command}')
+        return
+    write_guild_file(guild_records)
+    exit()
+
+
+
+with open('key') as f:
+    BOT_TOKEN = f.read().strip()
 
 prefix = "&"
 bot = Bot(prefix, loop=loop)
@@ -174,30 +184,38 @@ async def activity_check(context,
     last_posts = guild_record.last_posts
     sorted_last_posts = sorted(last_posts.items(), key=lambda post:
                                post[1]["last_post"])
-    posts = []
+    sorted_last_posts = dict(sorted_last_posts)
+
+    non_posting_members = (member for member in target_guild.members 
+                                if not member.id in sorted_last_posts)
+
+    non_posting_members_non_bot = (member for member in non_posting_members
+                                        if not member.bot)
+
     non_posts = []
+    for member in non_posting_members_non_bot:
+        print(f"{member.name} was not found in last posts")
+        join_date = human_readable_date(member.joined_at)
+        non_posts.append(f"**{member.mention}** has not posted."
+                        f"They join at **{join_date}**\n")
+
+    posts = []
     for member_id, member_record in sorted_last_posts.items():
-        member = target_guild.get_member(int(member_id))
+        member = target_guild.get_member(member_id)
         if member is not None and not member.bot:
-            if member_id not in sorted_last_posts:
-                print(f"{member.name} was not found in last posts")
+            count = member_record["posts"]
+            if count == 0:
                 join_date = human_readable_date(member.joined_at)
                 non_posts.append(f"**{member.mention}** has not posted."
-                                 f"They join at **{join_date}**\n")
+                                    f"They join at **{join_date}**\n")
             else:
-                count = member_record["posts"]
-                if count == 0:
-                    join_date = human_readable_date(member.joined_at)
-                    non_posts.append(f"**{member.mention}** has not posted."
-                                     f"They join at **{join_date}**\n")
-                else:
-                    last_post = member_record["last_post"]
-                    last_post_human = human_readable_date(last_post)
-                    join_date = human_readable_date(member.joined_at)
-                    posts.append(f"Last Post: **{last_post_human}**"
-                                 f" Name: **{member.mention}**"
-                                 f" Join date: **{join_date}**"
-                                 f" Total Posts: **{count}**\n")
+                last_post = member_record["last_post"]
+                last_post_human = human_readable_date(last_post)
+                join_date = human_readable_date(member.joined_at)
+                posts.append(f"Last Post: **{last_post_human}**"
+                                f" Name: **{member.mention}**"
+                                f" Join date: **{join_date}**"
+                                f" Total Posts: **{count}**\n")
 
     message_text = ""
     lines = non_posts + posts
@@ -352,7 +370,9 @@ async def upload_emoji(id, name, session, guild, type='png'):
                                                     image=image)
 
 
-if __name__ == "__main__":
-    if __debug__:
-        loop.set_debug(True)
+def start():
+    loop.add_reader(stdin.fileno(), command_handler)
     bot.run(BOT_TOKEN)
+
+if __name__ == "__main__":
+    start()
