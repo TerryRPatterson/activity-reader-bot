@@ -19,13 +19,13 @@ Copyright 2018 Terry Patterson
 import datetime
 import typing
 import asyncio
-import re
 
 import discord
 import aiohttp
 
 
 import activityReader
+import DiscordShelf
 
 from os import environ, EX_CONFIG
 from concurrent.futures import ThreadPoolExecutor
@@ -52,6 +52,11 @@ except KeyError:
           " your token.")
     exit(EX_CONFIG)
 
+
+def close(shelf):
+    shelf.close()
+
+
 prefix = "&"
 bot = Bot(prefix, loop=loop)
 start_done = False
@@ -65,6 +70,7 @@ async def load_guild_activity(guild, guild_record, start, end):
     await activity_logs(guild, guild_record, start, end)
 
 
+
 def load_guild_file():
     try:
         with open('guilds.yaml') as file:
@@ -76,6 +82,7 @@ def load_guild_file():
 def write_guild_file(records):
     with open('guilds.yaml', 'w') as file:
         file.write(records.to_yaml())
+
 
 
 @bot.event
@@ -102,7 +109,7 @@ async def on_ready():
     for guild in bot.guilds:
         print(f"Loading {guild.name}")
         guild_record = guild_records[guild.id]
-        guild_last_post_time = guild_record.last_processed
+        guild_last_post_time = guild_record['last_processed']
         await activity_logs(guild, guild_record, end=bot_start_time,
                             start=guild_last_post_time)
     print("Guilds loaded.")
@@ -125,15 +132,16 @@ async def on_message(message):
                             guild_record.last_posts[author_id]["posts"] += 1
                             guild_record.last_posts[author_id]["last_post"] = \
                                 message.created_at
+
                         else:
-                            guild_record.last_posts[author_id] = {
+                            guild_record['last_posts'][author_id] = {
                                                     "last_post":
                                                     message.created_at,
                                                     "posts": 1,
                                 }
         elif message.content.startswith(prefix):
-            message_text = (f"{message.author.mention} I am not not finished"
-                            " counting hold on.")
+            message_text = (f"{message.author.mention} I am not not"
+                            " finished counting hold on.")
             await message.channel.send(message_text)
 
 
@@ -145,19 +153,18 @@ async def purge_reactions(context):
             async for reactor in reaction.users():
                 if reactor not in channel_message.guild.members:
                     await channel_message.remove_reaction(reaction.emoji,
-                                                          reactor)
+                                                            reactor)
     await context.author.send("Reaction purge complete.")
     await context.message.delete()
 
 
 @bot.command()
-async def activity_check(context,
-                         guild_id: typing.Optional[int] = None):
+async def activity_check(context, guild_id: typing.Optional[int] = None):
     """Check all users activity."""
     if context.guild is None and context is None:
         await context.author.send("check_messages requires"
-                                  " a guild id in direct"
-                                  " message.")
+                                    " a guild id in direct"
+                                    " message.")
         return
 
     if guild_id is None:
@@ -166,14 +173,15 @@ async def activity_check(context,
         target_guild = bot.get_guild(guild_id)
         if target_guild is None:
             message = (f"{context.author.mention} I am sorry I could not find "
-                       f"guild {guild_id}")
+                    f"guild {guild_id}")
             await context.send(message)
             return
 
     guild_record = guild_records[target_guild.id]
-    last_posts = guild_record.last_posts
+    last_posts = guild_record['last_posts']
     sorted_last_posts = sorted(last_posts.items(), key=lambda post:
                                post[1]["last_post"])
+
     posts = []
     non_posts = []
     for member_id, member_record in sorted_last_posts.items():
@@ -183,21 +191,22 @@ async def activity_check(context,
                 print(f"{member.name} was not found in last posts")
                 join_date = human_readable_date(member.joined_at)
                 non_posts.append(f"**{member.mention}** has not posted."
-                                 f"They join at **{join_date}**\n")
+                                f"They join at **{join_date}**\n")
             else:
                 count = member_record["posts"]
                 if count == 0:
                     join_date = human_readable_date(member.joined_at)
-                    non_posts.append(f"**{member.mention}** has not posted."
-                                     f"They join at **{join_date}**\n")
+                    non_posts.append(f"**{member.mention}** has not "
+                                        "posted. They join at "
+                                        f"**{join_date}**\n")
                 else:
                     last_post = member_record["last_post"]
                     last_post_human = human_readable_date(last_post)
                     join_date = human_readable_date(member.joined_at)
                     posts.append(f"Last Post: **{last_post_human}**"
-                                 f" Name: **{member.mention}**"
-                                 f" Join date: **{join_date}**"
-                                 f" Total Posts: **{count}**\n")
+                                    f" Name: **{member.mention}**"
+                                    f" Join date: **{join_date}**"
+                                    f" Total Posts: **{count}**\n")
 
     message_text = ""
     lines = non_posts + posts
@@ -241,7 +250,8 @@ async def delete_messages_by(context, target: int, name=None):
     """Delete all messages from a user."""
     guild = context.guild
     async with context.typing():
-        delete_gen = _delete_messages(guild, delete_messages_by_target(target))
+        delete_gen = _delete_messages(guild,
+                                        delete_messages_by_target(target))
         member = guild.get_member(target)
         target_user = bot.get_user(target)
         if member is not None:
@@ -267,13 +277,19 @@ async def _delete_messages(guild, target_func):
         read += 1
         if read % 100 == 0:
             major_read = read
-            fields = {'Messages Read': major_read, 'Messages Delete': deleted}
+            fields = {
+                'Messages Read': major_read, 
+                'Messages Delete': deleted
+                }
             yield (False, fields)
         if target_func(guild_message):
             print(guild_message.author.name)
             await guild_message.delete()
             deleted += 1
-            fields = {'Messages Read': major_read, 'Messages Deleted': deleted}
+            fields = {
+                'Messages Read': major_read, 
+                'Messages Deleted': deleted
+                }
             yield (False, fields)
     else:
         fields = {'Messages Read': read, 'Messages Delete': deleted}
@@ -289,7 +305,8 @@ async def counter_messages(gen, target, embed_args={}):
         if done:
             if embed:
                 name = 'Completion Message:'
-                embed.add_field(name=name, value=done_message, inline=False)
+                embed.add_field(name=name, value=done_message,
+                                inline=False)
                 await embeded_message.edit(embed=embed)
                 return (value, embed)
             return value
@@ -306,7 +323,7 @@ async def counter_messages(gen, target, embed_args={}):
 async def on_member_join(new_member):
     guild = new_member.guild
     guild_record = guild_records[guild.id]
-    guild_record.last_posts[new_member.id] = {
+    guild_record['last_posts'][new_member.id] = {
                                                 "posts": 0,
                                                 "last_post": zero_date
                                             }

@@ -1,0 +1,34 @@
+#! /usr/bin/env bash
+set -e
+
+CURRENT_DIR=$(pwd);
+DIR="$(dirname "$(readlink -m "${0}"/../)")";
+cd ${DIR};
+
+target="dev";
+Dockerfile="${DIR}/Dockerfile"
+
+parameters=("--env=USER=$USER" "--rm=true" "--interactive=true"
+            "--sig-proxy=true" "--volume=/etc/localtime:/etc/localtime:ro")
+if [[ "${1}" == "--prod" ]];
+then
+    echo "Prod"
+    target="latest";
+    Dockerfile="${DIR}/Dockerfile.production"
+    ./dev_tools/copy_files
+    cd ./build_dir
+    docker build -t activity_reader:${target} .
+
+else
+    echo "Dev"
+    parameters+=(--volume="${DIR}:/code")
+    cat ${Dockerfile} |
+        sed -e "s/__UID__/$(id -u)/g" \
+            -e "s/__GID__/$(id -g)/g" |
+        docker build -t activity_reader:${target} -
+
+    docker run "${parameters[@]}" \
+            activity_reader:${target} \
+            install_deps
+
+fi

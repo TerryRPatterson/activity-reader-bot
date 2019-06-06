@@ -19,7 +19,6 @@ Copyright 2018 Terry Patterson
 import calendar
 import datetime
 
-from contextlib import AsyncExitStack
 from discord import TextChannel
 from discord.utils import snowflake_time
 
@@ -56,6 +55,8 @@ def process_post(message, guild_record, last_processed):
                                                 "last_post": timestamp,
                                             }
 
+                                }
+
     return last_processed
 
 
@@ -91,7 +92,7 @@ async def get_all_messages_guild(guild, start=None, end=None):
 
 async def activity_logs(guild, guild_record, start, end):
     """Get a log of all users activity."""
-    last_processed = guild_record.last_processed
+    last_processed = guild_record['last_processed']
     async for message in get_all_messages_guild(guild, start, end):
         last_processed = process_post(message, guild_record, last_processed)
 
