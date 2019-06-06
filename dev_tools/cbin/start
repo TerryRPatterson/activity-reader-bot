@@ -1,5 +1,0 @@
-#! /usr/bin/env bash
-set -e
-
-source /code/.virtualenv/bin/activate
-python bot.py

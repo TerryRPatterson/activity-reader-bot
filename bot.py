@@ -22,50 +22,40 @@ import asyncio
 import re
 
 import discord
-import motor
 import aiohttp
 
 
 import activityReader
 
 from os import environ, EX_CONFIG
-from operator import itemgetter
+from concurrent.futures import ThreadPoolExecutor
 
-from discord import TextChannel, Message
-from discord.utils import snowflake_time
-from discord.ext.commands import Bot, is_owner, BadArgument
+from discord.ext.commands import Bot, is_owner
 from discord.errors import NotFound
-from umongo import Instance
+from box import Box
 
-
-from model import get_model
 from activityReader import (get_all_messages_guild, activity_logs,
                             human_readable_date)
+from Guild import Guild
 
 loop = asyncio.get_event_loop()
 
 zero_date = datetime.datetime(year=2015, month=1, day=1)
 
-net_if = environ["NET_IF"]
-
-dbConn = motor.motor_asyncio.AsyncIOMotorClient(net_if, io_loop=loop)
-db = dbConn['activity_reader']
-dbInstance = Instance(db)
-
-Guild = get_model(dbInstance)
+pool = ThreadPoolExecutor()
 
 
 try:
     BOT_TOKEN = environ["discord_api_token"]
 except KeyError:
-    print("Bot token not found. Please set discord_api_token in enviorment to"
+    print("Bot token not found. Please set discord_api_token in environment to"
           " your token.")
     exit(EX_CONFIG)
 
 prefix = "&"
 bot = Bot(prefix, loop=loop)
 start_done = False
-guild_records = {}
+guild_records = Box()
 
 permission_denied = "{mention} is that command for moderators only."
 
@@ -75,21 +65,17 @@ async def load_guild_activity(guild, guild_record, start, end):
     await activity_logs(guild, guild_record, start, end)
 
 
-async def get_guild_record(guild):
-    guild_record = await Guild.find_one({'id': guild.id})
-    if guild_record is None:
-        guild_record = Guild(name=guild.name, id=guild.id)
-    for member in guild.members:
-        member_id = member.id
-        if member_id not in guild_record.last_posts:
+def load_guild_file():
+    try:
+        with open('guilds.yaml') as file:
+            return Box.from_yaml(file.read())
+    except FileNotFoundError:
+        return Box()
 
-            guild_record.last_posts[member_id] = {
-                                                    "posts": 0,
-                                                    "last_post": zero_date,
-                                                  }
-    print("Record created")
-    await guild_record.commit()
-    return guild_record
+
+def write_guild_file(records):
+    with open('guilds.yaml', 'w') as file:
+        file.write(records.to_yaml())
 
 
 @bot.event
@@ -101,10 +87,13 @@ async def on_ready():
     print(bot.user.id)
     print("------")
     last_processeds = {}
+    global guild_records
+    guild_records = await loop.run_in_executor(pool, load_guild_file)
     for guild in bot.guilds:
-        guild_record = await get_guild_record(guild)
-        guild_records[guild.id] = guild_record
+        default = Guild(guild.name, guild.id)
+        guild_record = guild_records.setdefault(guild.id, default)
         last_processeds[guild.id] = guild_record.last_processed
+    write_guild_file(guild_records)
 
     global start_done
     start_done = True
@@ -117,7 +106,6 @@ async def on_ready():
         await activity_logs(guild, guild_record, end=bot_start_time,
                             start=guild_last_post_time)
     print("Guilds loaded.")
-    await Guild.ensure_indexes()
 
 
 @bot.event
@@ -132,7 +120,7 @@ async def on_message(message):
                     guild_record = guild_records[guild_id]
                     message_info = activityReader.get_message_info(message)
                     if message_info:
-                        author_id = str(message_info["id"])
+                        author_id = message_info["id"]
                         if author_id in guild_record.last_posts:
                             guild_record.last_posts[author_id]["posts"] += 1
                             guild_record.last_posts[author_id]["last_post"] = \
@@ -186,8 +174,6 @@ async def activity_check(context,
     last_posts = guild_record.last_posts
     sorted_last_posts = sorted(last_posts.items(), key=lambda post:
                                post[1]["last_post"])
-
-    sorted_last_posts = {int(key): value for (key, value) in sorted_last_posts}
     posts = []
     non_posts = []
     for member_id, member_record in sorted_last_posts.items():
@@ -248,6 +234,7 @@ async def purge_messages(context):
 
 def delete_messages_by_target(target):
     return lambda message: message.author.id == target
+
 
 @bot.command()
 async def delete_messages_by(context, target: int, name=None):
@@ -324,15 +311,6 @@ async def on_member_join(new_member):
                                                 "last_post": zero_date
                                             }
 
-
-@is_owner()
-@bot.command()
-async def shutdown(context, time: typing.Optional[int] = 0):
-    await asyncio.sleep(time)
-    await bot.close()
-    await dbConn.close()
-    exit(0)
-
 @is_owner()
 @bot.command()
 async def get_emoji(context, start: int, end: int):
@@ -374,7 +352,7 @@ async def upload_emoji(id, name, session, guild, type='png'):
                                                     image=image)
 
 
-
-
-
-bot.run(BOT_TOKEN)
+if __name__ == "__main__":
+    if __debug__:
+        loop.set_debug(True)
+    bot.run(BOT_TOKEN)

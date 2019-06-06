@@ -1,4 +1,5 @@
-git+https://github.com/Rapptz/discord.py@rewrite
-umongo[motor]
-python-dateutil
+discord.py
 aiohttp
+python-box
+pyyaml
+setuptools

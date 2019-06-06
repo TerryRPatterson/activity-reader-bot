@@ -1,6 +1,0 @@
-#! /bin/env bash
-
-route=$(ip route get 8.8.8.8)
-my_public_ip=$(echo ${route#*src} | awk "{print $1}")
-
-echo $my_public_ip

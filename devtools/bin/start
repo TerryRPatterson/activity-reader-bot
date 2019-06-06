@@ -1,0 +1,7 @@
+#! /usr/bin/env bash
+
+
+set -e
+target="dev";
+
+python "$WRK_DIR/bot.py"
