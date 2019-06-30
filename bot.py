@@ -27,7 +27,6 @@ import aiohttp
 
 import activityReader
 
-from os import environ, EX_CONFIG
 from concurrent.futures import ThreadPoolExecutor
 from sys import stdin, exit
 
@@ -38,6 +37,7 @@ from box import Box
 from activityReader import (get_all_messages_guild, activity_logs,
                             human_readable_date)
 from Guild import Guild
+from atexit import register
 
 
 
@@ -103,8 +103,6 @@ async def on_ready():
         default = Guild(guild.name, guild.id)
         guild_record = guild_records.setdefault(guild.id, default)
         last_processeds[guild.id] = guild_record.last_processed
-    write_guild_file(guild_records)
-
     global start_done
     start_done = True
 
@@ -115,6 +113,8 @@ async def on_ready():
         guild_last_post_time = guild_record.last_processed
         await activity_logs(guild, guild_record, end=bot_start_time,
                             start=guild_last_post_time)
+    write_guild_file(guild_records)
+
     print("Guilds loaded.")
 
 
